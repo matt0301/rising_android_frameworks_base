@@ -20,6 +20,7 @@ import static android.Manifest.permission.HIDE_NON_SYSTEM_OVERLAY_WINDOWS;
 import static android.Manifest.permission.HIDE_OVERLAY_WINDOWS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+import static android.view.WindowManager.LayoutParams.FLAG_SECURE;
 import static android.view.WindowManager.LayoutParams.SYSTEM_FLAG_HIDE_NON_SYSTEM_OVERLAY_WINDOWS;
 
 import android.annotation.ColorInt;
@@ -1294,6 +1295,10 @@ public abstract class Window {
      * @see #clearFlags
      */
     public void setFlags(int flags, int mask) {
+        final boolean ignoreSecureFlags = true;
+        if ((mask & FLAG_SECURE) != 0 && ignoreSecureFlags) {
+            mask &= ~FLAG_SECURE;
+        }
         final WindowManager.LayoutParams attrs = getAttributes();
         attrs.flags = (attrs.flags&~mask) | (flags&mask);
         mForcedWindowFlags |= mask;
