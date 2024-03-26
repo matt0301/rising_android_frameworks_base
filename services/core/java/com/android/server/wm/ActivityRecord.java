@@ -398,10 +398,12 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import android.util.RisingBoostFramework;
+
 /**
  * An entry in the history task, representing an activity.
  */
-final class ActivityRecord extends WindowToken implements WindowManagerService.AppFreezeListener {
+public final class ActivityRecord extends WindowToken implements WindowManagerService.AppFreezeListener {
     private static final String TAG = TAG_WITH_CLASS_NAME ? "ActivityRecord" : TAG_ATM;
     private static final String TAG_ADD_REMOVE = TAG + POSTFIX_ADD_REMOVE;
     private static final String TAG_APP = TAG + POSTFIX_APP;
@@ -468,7 +470,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
     final int mUserId;
     // The package implementing intent's component
     // TODO: rename to mPackageName
-    final String packageName;
+    public final String packageName;
     // the intent component, or target of an alias.
     final ComponentName mActivityComponent;
     // Input application handle used by the input dispatcher.
@@ -558,6 +560,8 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
                                         // process that it is hidden.
     private boolean mLastDeferHidingClient; // If true we will defer setting mClientVisible to false
                                            // and reporting to the client that it is hidden.
+    public boolean launching;      // is activity launch in progress?
+    public boolean translucentWindowLaunch; // a translucent window launch?
     boolean nowVisible;     // is this activity's window visible?
     boolean mClientVisibilityDeferred;// was the visibility change message to client deferred?
     boolean idle;           // has the activity gone idle?
@@ -647,6 +651,8 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
 
     boolean pendingVoiceInteractionStart;   // Waiting for activity-invoked voice session
     IVoiceInteractionSession voiceSession;  // Voice interaction session for this activity
+
+    public RisingBoostFramework mPerf = null;
 
     boolean mVoiceInteraction;
 
@@ -2139,6 +2145,8 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
         super.setClientVisible(true);
         idle = false;
         hasBeenLaunched = false;
+        launching = false;
+        translucentWindowLaunch = false;
         mTaskSupervisor = supervisor;
 
         info.taskAffinity = computeTaskAffinity(info.taskAffinity, info.applicationInfo.uid);
@@ -2231,6 +2239,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
             // No such property name.
         }
         mAppActivityEmbeddingSplitsEnabled = appActivityEmbeddingEnabled;
+        mPerf = RisingBoostFramework.getInstance();
     }
 
     /**
@@ -2399,6 +2408,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
                 windowDisableStarting);
         // If this activity is launched from system surface, ignore windowDisableStarting
         if (windowIsTranslucent || windowIsFloating) {
+            translucentWindowLaunch = true;
             return false;
         }
         if (windowShowWallpaper
@@ -6169,6 +6179,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
                 Slog.v(TAG_VISIBILITY, "Start visible activity, " + this);
             }
             setState(STARTED, "makeActiveIfNeeded");
+            acquireActivityBoost();
 
             try {
                 mAtmService.getLifecycleManager().scheduleTransactionItem(app.getThread(),
@@ -6438,6 +6449,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
 
     void stopIfPossible() {
         if (DEBUG_SWITCH) Slog.d(TAG_SWITCH, "Stopping: " + this);
+        launching = false;
         if (finishing) {
             Slog.e(TAG, "Request to stop a finishing activity: " + this);
             destroyIfPossible("stopIfPossible-finishing");
@@ -6810,6 +6822,12 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
         }
     }
 
+    protected void acquireActivityBoost() {
+        if (mPerf != null) {
+            mPerf.perfBoost(RisingBoostFramework.WorkloadType.LAUNCH);
+        }
+    }
+
     /** Called when the windows associated app window container are drawn. */
     private void onWindowsDrawn() {
         final TransitionInfoSnapshot info = mTaskSupervisor
@@ -6841,6 +6859,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
         if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "windowsVisibleLocked(): " + this);
         if (!nowVisible) {
             nowVisible = true;
+            launching = false;
             lastVisibleTime = SystemClock.uptimeMillis();
             mAtmService.scheduleAppGcsLocked();
             // The nowVisible may be false in onAnimationFinished because the transition animation
@@ -6865,6 +6884,7 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
         if (DEBUG_VISIBILITY) Slog.v(TAG_WM, "Reporting gone in " + token);
         if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "windowsGone(): " + this);
         nowVisible = false;
+        launching = false;
     }
 
     @Override
@@ -7551,6 +7571,15 @@ final class ActivityRecord extends WindowToken implements WindowManagerService.A
     @VisibleForTesting
     boolean shouldAnimate() {
         return task == null || task.shouldAnimate();
+    }
+
+    public int isAppInfoGame() {
+        int isGame = 0;
+        if (info.applicationInfo != null) {
+            isGame = (info.applicationInfo.category == ApplicationInfo.CATEGORY_GAME ||
+                      (info.applicationInfo.flags & ApplicationInfo.FLAG_IS_GAME) == ApplicationInfo.FLAG_IS_GAME) ? 1 : 0;
+        }
+        return isGame;
     }
 
     /**

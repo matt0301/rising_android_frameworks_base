@@ -34,6 +34,7 @@ import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Process;
 import android.os.Message;
 import android.os.PowerExemptionManager;
 import android.os.SystemClock;
@@ -835,6 +836,9 @@ final class ActivityManagerConstants extends ContentObserver {
     // processes and the number of those processes does not count against the cached
     // process limit. This will be initialized in the constructor.
     public int CUR_MAX_CACHED_PROCESSES;
+    
+    public static long totalMemory = Process.getTotalMemory();
+    public static boolean allowTrim() { return totalMemory < (totalMemory / 2) ; }
 
     // The maximum number of empty app processes we will let sit around.  This will be
     // initialized in the constructor.
@@ -1343,9 +1347,11 @@ final class ActivityManagerConstants extends ContentObserver {
         CUR_MAX_CACHED_PROCESSES = Integer.min(mCustomizedMaxCachedProcesses, MAX_CACHED_PROCESSES);
         CUR_MAX_EMPTY_PROCESSES = computeEmptyProcessLimit(CUR_MAX_CACHED_PROCESSES);
 
-        final int rawMaxEmptyProcesses = computeEmptyProcessLimit(CUR_MAX_CACHED_PROCESSES);
-        CUR_TRIM_EMPTY_PROCESSES = rawMaxEmptyProcesses / 2;
-        CUR_TRIM_CACHED_PROCESSES = (CUR_MAX_CACHED_PROCESSES - rawMaxEmptyProcesses) / 3;
+        final int rawMaxEmptyProcesses = computeEmptyProcessLimit(
+                Integer.min(CUR_MAX_CACHED_PROCESSES, MAX_CACHED_PROCESSES));
+        CUR_TRIM_EMPTY_PROCESSES = computeTrimEmptyApps(rawMaxEmptyProcesses);
+        CUR_TRIM_CACHED_PROCESSES = (Integer.min(CUR_MAX_CACHED_PROCESSES, MAX_CACHED_PROCESSES)
+                    - rawMaxEmptyProcesses) / 3;
         loadNativeBootDeviceConfigConstants();
         mDefaultDisableAppProfilerPssProfiling = context.getResources().getBoolean(
                 R.bool.config_am_disablePssProfiling);
@@ -1408,7 +1414,19 @@ final class ActivityManagerConstants extends ContentObserver {
     }
 
     public static int computeEmptyProcessLimit(int totalProcessLimit) {
-        return totalProcessLimit/2;
+        if(allowTrim()) {
+            return totalProcessLimit;
+        } else {
+            return totalProcessLimit/2;
+        }
+    }
+
+    public static int computeTrimEmptyApps(int rawMaxEmptyProcesses) {
+        if (allowTrim()) {
+            return rawMaxEmptyProcesses;
+        } else {
+            return rawMaxEmptyProcesses/2;
+        }
     }
 
     @Override
@@ -1920,9 +1938,11 @@ final class ActivityManagerConstants extends ContentObserver {
 
         CUR_MAX_EMPTY_PROCESSES = computeEmptyProcessLimit(CUR_MAX_CACHED_PROCESSES);
 
-        final int rawMaxEmptyProcesses = computeEmptyProcessLimit(CUR_MAX_CACHED_PROCESSES);
-        CUR_TRIM_EMPTY_PROCESSES = rawMaxEmptyProcesses / 2;
-        CUR_TRIM_CACHED_PROCESSES = (CUR_MAX_CACHED_PROCESSES - rawMaxEmptyProcesses) / 3;
+        final int rawMaxEmptyProcesses = computeEmptyProcessLimit(
+                Integer.min(CUR_MAX_CACHED_PROCESSES, MAX_CACHED_PROCESSES));
+        CUR_TRIM_EMPTY_PROCESSES = computeTrimEmptyApps(rawMaxEmptyProcesses);
+        CUR_TRIM_CACHED_PROCESSES = (Integer.min(CUR_MAX_CACHED_PROCESSES, MAX_CACHED_PROCESSES)
+                    - rawMaxEmptyProcesses) / 3;
     }
 
     private void updateProactiveKillsEnabled() {

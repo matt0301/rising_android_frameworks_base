@@ -37,6 +37,8 @@ import com.android.systemui.shared.system.TaskStackChangeListeners
 import java.util.Arrays
 import javax.inject.Inject
 
+import android.util.RisingBoostFramework
+
 @SysUISingleton
 class GameSpaceManager @Inject constructor(
     private val context: Context,
@@ -47,6 +49,8 @@ class GameSpaceManager @Inject constructor(
 
     private var activeGame: String? = null
     private var isRegistered = false
+    
+    private val perf: RisingBoostFramework = RisingBoostFramework.getInstance()
 
     private val taskStackChangeListener = object : TaskStackChangeListener {
         override fun onTaskStackChanged() {
@@ -87,6 +91,9 @@ class GameSpaceManager @Inject constructor(
             info?.topActivity ?: return
             val packageName = info.topActivity?.packageName
             activeGame = checkGameList(packageName)
+            if (isGameActive()) {
+                perf.addPackageToGameList(packageName)
+            }
             handler.sendEmptyMessage(MSG_DISPATCH_FOREGROUND_APP)
         } catch (e: RemoteException) {
         }
@@ -96,6 +103,9 @@ class GameSpaceManager @Inject constructor(
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!pm.isInteractive && activeGame != null) return
         val action = if (activeGame != null) ACTION_GAME_START else ACTION_GAME_STOP
+        if (action == ACTION_GAME_START) {
+            perf.perfBoost(RisingBoostFramework.WorkloadType.GAME)
+        }
         Intent(action).apply {
             setPackage(GAMESPACE_PACKAGE)
             component = ComponentName.unflattenFromString(RECEIVER_CLASS)

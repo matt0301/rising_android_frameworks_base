@@ -476,6 +476,7 @@ public final class CachedAppOptimizer {
     private volatile boolean mUseFreezer = false; // set to DEFAULT in init()
     @GuardedBy("this")
     private int mFreezerDisableCount = 1; // Freezer is initially disabled, until enabled
+    public volatile int  mCompactionPriority = Process.THREAD_GROUP_BACKGROUND;
     private final Random mRandom = new Random();
     @GuardedBy("mPhenotypeFlagLock")
     @VisibleForTesting volatile float mCompactStatsdSampleRate = DEFAULT_STATSD_SAMPLE_RATE;
@@ -671,7 +672,7 @@ public final class CachedAppOptimizer {
         mAm = am;
         mProcLock = am.mProcLock;
         mCachedAppOptimizerThread = new ServiceThread("CachedAppOptimizerThread",
-            Process.THREAD_GROUP_SYSTEM, true);
+            mCompactionPriority, true);
         mProcStateThrottle = new HashSet<>();
         mProcessDependencies = processDependencies;
         mTestCallback = callback;
@@ -983,7 +984,7 @@ public final class CachedAppOptimizer {
             mCompactionHandler = new MemCompactionHandler();
 
             Process.setThreadGroupAndCpuset(mCachedAppOptimizerThread.getThreadId(),
-                    Process.THREAD_GROUP_SYSTEM);
+                    mCompactionPriority);
         }
     }
 
@@ -1165,7 +1166,7 @@ public final class CachedAppOptimizer {
                 }
 
                 Process.setThreadGroupAndCpuset(mCachedAppOptimizerThread.getThreadId(),
-                        Process.THREAD_GROUP_SYSTEM);
+                        mCompactionPriority);
             } else {
                 Slog.d(TAG_AM, "Freezer disabled");
                 enableFreezer(false);
