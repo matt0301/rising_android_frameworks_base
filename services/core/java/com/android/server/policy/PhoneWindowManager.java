@@ -265,6 +265,8 @@ import lineageos.providers.LineageSettings;
 import org.lineageos.internal.buttons.LineageButtons;
 import org.lineageos.internal.util.ActionUtils;
 
+import org.rising.server.ShakeGestureService;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -668,6 +670,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
     private SwipeToScreenshotListener mSwipeToScreenshot;
     private boolean haveEnableGesture = false;
+    private ShakeGestureService mShakeGestures;
 
     // Tracks user-customisable behavior for certain key events
     private Action mBackLongPressAction;
@@ -6887,6 +6890,46 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 interceptScreenshotChord(TAKE_SCREENSHOT_FULLSCREEN, SCREENSHOT_KEY_OTHER, 0 /*pressDelay*/);
             }
         });
+        
+        mShakeGestures = ShakeGestureService.getInstance(mContext);
+        mShakeGestures.setShakeCallbacks(new ShakeGestureService.ShakeGesturesCallbacks() {
+            @Override
+            public void onScreenshotTaken() {
+                interceptScreenshotChord(TAKE_SCREENSHOT_FULLSCREEN, SCREENSHOT_KEY_OTHER, 0 /*pressDelay*/);
+            }
+            @Override
+            public void onClearAllNotifications() {
+                clearAllNotifications();
+            }
+            @Override
+            public void onToggleRingerModes() {
+                toggleRingerModes();
+            }
+            @Override
+            public void onToggleTorch() {
+                toggleTorch();
+            }
+            @Override
+            public void onMediaKeyDispatch() {
+                AudioManager am = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+                int keyCode = am.isMusicActive() ? KeyEvent.KEYCODE_MEDIA_NEXT : KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+                long eventTime = System.currentTimeMillis();
+                KeyEvent downEvent = new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, keyCode, 0);
+                KeyEvent upEvent = new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, keyCode, 0);
+                dispatchMediaKeyWithWakeLock(downEvent);
+                dispatchMediaKeyWithWakeLock(upEvent);
+            }
+            @Override
+            public void onToggleVolumePanel() {
+                toggleVolumePanel();
+            }
+            @Override
+            public void onKillApp() {
+                ActionUtils.killForegroundApp(mContext, mCurrentUserId);
+            }
+        });
+
+        mShakeGestures.onStart();
 
         mLineageHardware = LineageHardwareManager.getInstance(mContext);
 
