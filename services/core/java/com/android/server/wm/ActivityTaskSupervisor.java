@@ -1987,10 +1987,6 @@ public class ActivityTaskSupervisor implements RecentTasks.Callbacks {
         return timedout;
     }
 
-    public ActivityRecord getTopResumedActivity() {
-        return mTopResumedActivity;
-    }
-
     void comeOutOfSleepIfNeededLocked() {
         removeSleepTimeouts();
         if (mGoingToSleepWakeLock.isHeld()) {
