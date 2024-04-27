@@ -3545,6 +3545,7 @@ public class AudioService extends IAudioService.Stub
         if (mUseFixedVolume) {
             return;
         }
+        mVolumeController.onVolumeKeyPressed();
         if (DEBUG_VOL) Log.d(TAG, "adjustStreamVolume() stream=" + streamType + ", dir=" + direction
                 + ", flags=" + flags + ", caller=" + caller);
 
@@ -3630,7 +3631,10 @@ public class AudioService extends IAudioService.Stub
             }
         } else {
             // convert one UI step (+/-1) into a number of internal units on the stream alias
-            step = rescaleStep(10, streamType, streamTypeAlias);
+            int streamStep = mVolumeController.isLongPress() ? 100 / MAX_STREAM_VOLUME[streamTypeAlias] : 10;
+            streamStep = Math.min(streamStep, 10);
+            if (DEBUG_VOL) Log.d("streamStep", "scale: [ streamStep=" + streamStep + " ]");
+            step = rescaleStep(streamStep, streamType, streamTypeAlias);
         }
 
         // If either the client forces allowing ringer modes for this adjustment,
@@ -11978,11 +11982,14 @@ public class AudioService extends IAudioService.Stub
     /** Wrapper which encapsulates the {@link IVolumeController} functionality. */
     public class VolumeController implements ISafeHearingVolumeController {
         private static final String TAG = "VolumeController";
+        private static final long LONG_PRESS_THRESHOLD = 100;
 
         private IVolumeController mController;
         private boolean mVisible;
         private long mNextLongPress;
+        private long mNextKeyLongPress;
         private int mLongPressTimeout;
+        private boolean mIsLongPress;
 
         public void setController(IVolumeController controller) {
             mController = controller;
@@ -11995,7 +12002,23 @@ public class AudioService extends IAudioService.Stub
 
         public void loadSettings(ContentResolver cr) {
             mLongPressTimeout = mSettings.getSecureIntForUser(cr,
-                    Settings.Secure.LONG_PRESS_TIMEOUT, 500, UserHandle.USER_CURRENT);
+                    Settings.Secure.LONG_PRESS_TIMEOUT, 400, UserHandle.USER_CURRENT);
+        }
+
+        public void onVolumeKeyPressed() {
+            long currentTime = SystemClock.uptimeMillis();
+            if (currentTime >= mNextKeyLongPress) {
+                this.mIsLongPress = false;
+                if (DEBUG_VOL) Log.d(TAG, "Short volume key press detected");
+            } else {
+                this.mIsLongPress = true;
+                if (DEBUG_VOL) Log.d(TAG, "Long volume key press detected");
+            }
+            mNextKeyLongPress = currentTime + LONG_PRESS_THRESHOLD;
+        }
+
+        public boolean isLongPress() {
+            return mIsLongPress;
         }
 
         public boolean suppressAdjustment(int resolvedStream, int flags, boolean isMute) {
