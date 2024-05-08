@@ -3631,8 +3631,8 @@ public class AudioService extends IAudioService.Stub
             }
         } else {
             // convert one UI step (+/-1) into a number of internal units on the stream alias
-            int streamStep = mVolumeController.isLongPress() ? 100 / MAX_STREAM_VOLUME[streamTypeAlias] : 10;
-            streamStep = Math.min(streamStep, 10);
+            int streamStep = mVolumeController.isLongPress() ? (100 / MAX_STREAM_VOLUME[streamTypeAlias]) : 10;
+            streamStep = streamStep > 10 ? 10 : streamStep;
             if (DEBUG_VOL) Log.d("streamStep", "scale: [ streamStep=" + streamStep + " ]");
             step = rescaleStep(streamStep, streamType, streamTypeAlias);
         }
@@ -4991,6 +4991,20 @@ public class AudioService extends IAudioService.Stub
             flags &= ~AudioManager.FLAG_SHOW_UI;
         }
         mVolumeController.postVolumeChanged(streamType, flags);
+        // skip updating the volume group index if stream type is music
+        if (mIsSingleVolume && streamType == AudioSystem.STREAM_MUSIC) {
+            if ((flags & AudioManager.FLAG_FIXED_VOLUME) == 0) {
+                oldIndex = (oldIndex + 5) / 10;
+                index = (index + 5) / 10;
+                if (index != oldIndex) {
+                    Intent intent = new Intent(AudioManager.VOLUME_CHANGED_ACTION);
+                    intent.putExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, streamType);
+                    intent.putExtra(AudioManager.EXTRA_VOLUME_STREAM_VALUE, index);
+                    intent.putExtra(AudioManager.EXTRA_PREV_VOLUME_STREAM_VALUE, oldIndex);
+                    sendBroadcastToAll(intent, null);
+                }
+            }
+        }
     }
 
     // Don't show volume UI when:
@@ -8952,7 +8966,7 @@ public class AudioService extends IAudioService.Stub
                     }
                 }
             }
-            if (changed) {
+            if (changed && !mIsSingleVolume && mStreamType != AudioSystem.STREAM_MUSIC) {
                 // If associated to volume group, update group cache
                 updateVolumeGroupIndex(device, /* forceMuteState= */ false);
 
@@ -8971,7 +8985,7 @@ public class AudioService extends IAudioService.Stub
                 if ((index != oldIndex) && isCurrentDevice) {
                     // for single volume devices, only send the volume change broadcast
                     // on the alias stream
-                    if (!mIsSingleVolume || (mStreamVolumeAlias[mStreamType] == mStreamType)) {
+                    if (mStreamVolumeAlias[mStreamType] == mStreamType) {
                         mVolumeChanged.putExtra(AudioManager.EXTRA_VOLUME_STREAM_VALUE, index);
                         mVolumeChanged.putExtra(AudioManager.EXTRA_PREV_VOLUME_STREAM_VALUE,
                                 oldIndex);
@@ -11982,7 +11996,7 @@ public class AudioService extends IAudioService.Stub
     /** Wrapper which encapsulates the {@link IVolumeController} functionality. */
     public class VolumeController implements ISafeHearingVolumeController {
         private static final String TAG = "VolumeController";
-        private static final long LONG_PRESS_THRESHOLD = 100;
+        private static final long VOLUME_KEY_PRESS_INTERVAL = 80;
 
         private IVolumeController mController;
         private boolean mVisible;
@@ -12002,7 +12016,7 @@ public class AudioService extends IAudioService.Stub
 
         public void loadSettings(ContentResolver cr) {
             mLongPressTimeout = mSettings.getSecureIntForUser(cr,
-                    Settings.Secure.LONG_PRESS_TIMEOUT, 400, UserHandle.USER_CURRENT);
+                    Settings.Secure.LONG_PRESS_TIMEOUT, 500, UserHandle.USER_CURRENT);
         }
 
         public void onVolumeKeyPressed() {
@@ -12014,7 +12028,7 @@ public class AudioService extends IAudioService.Stub
                 this.mIsLongPress = true;
                 if (DEBUG_VOL) Log.d(TAG, "Long volume key press detected");
             }
-            mNextKeyLongPress = currentTime + LONG_PRESS_THRESHOLD;
+            mNextKeyLongPress = currentTime + VOLUME_KEY_PRESS_INTERVAL;
         }
 
         public boolean isLongPress() {
